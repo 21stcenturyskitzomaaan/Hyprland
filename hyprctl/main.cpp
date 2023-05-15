@@ -23,6 +23,7 @@ const std::string USAGE = R"#(usage: hyprctl [(opt)flags] [command] [(opt)args]
 commands:
     monitors
     workspaces
+    activeworkspace
     clients
     activewindow
     layers
@@ -43,13 +44,16 @@ commands:
     setprop
     plugin
     notify
+    globalshortcuts
 
 flags:
     -j -> output in JSON
     --batch -> execute a batch of commands, separated by ';'
 )#";
 
-void              request(std::string arg, int minArgs = 0) {
+#define PAD
+
+void request(std::string arg, int minArgs = 0) {
     const auto SERVERSOCKET = socket(AF_UNIX, SOCK_STREAM, 0);
 
     const auto ARGS = std::count(arg.begin(), arg.end(), ' ');
@@ -79,7 +83,7 @@ void              request(std::string arg, int minArgs = 0) {
 
     std::string socketPath = "/tmp/hypr/" + instanceSigStr + "/.socket.sock";
 
-    strcpy(serverAddress.sun_path, socketPath.c_str());
+    strncpy(serverAddress.sun_path, socketPath.c_str(), sizeof(serverAddress.sun_path) - 1);
 
     if (connect(SERVERSOCKET, (sockaddr*)&serverAddress, SUN_LEN(&serverAddress)) < 0) {
         std::cout << "Couldn't connect to " << socketPath << ". (3)";
@@ -142,7 +146,7 @@ void requestHyprpaper(std::string arg) {
 
     std::string socketPath = "/tmp/hypr/" + instanceSigStr + "/.hyprpaper.sock";
 
-    strcpy(serverAddress.sun_path, socketPath.c_str());
+    strncpy(serverAddress.sun_path, socketPath.c_str(), sizeof(serverAddress.sun_path) - 1);
 
     if (connect(SERVERSOCKET, (sockaddr*)&serverAddress, SUN_LEN(&serverAddress)) < 0) {
         std::cout << "Couldn't connect to " << socketPath << ". (3)";
@@ -226,7 +230,10 @@ int setcursorRequest(int argc, char** argv) {
         return 1;
     }
 
-    std::string rq = "setcursor " + std::string(argv[2]) + " " + std::string(argv[3]);
+    std::string rq = "setcursor ";
+    for (size_t i = 2; i < argc; ++i)
+        rq += std::string(argv[i]) + " ";
+    rq.pop_back();
 
     request(rq);
     return 0;
@@ -323,6 +330,8 @@ int main(int argc, char** argv) {
         request(fullRequest);
     else if (fullRequest.contains("/workspaces"))
         request(fullRequest);
+    else if (fullRequest.contains("/activeworkspace"))
+        request(fullRequest);
     else if (fullRequest.contains("/activewindow"))
         request(fullRequest);
     else if (fullRequest.contains("/layers"))
@@ -344,6 +353,8 @@ int main(int argc, char** argv) {
     else if (fullRequest.contains("/cursorpos"))
         request(fullRequest);
     else if (fullRequest.contains("/animations"))
+        request(fullRequest);
+    else if (fullRequest.contains("/globalshortcuts"))
         request(fullRequest);
     else if (fullRequest.contains("/switchxkblayout"))
         request(fullRequest, 2);

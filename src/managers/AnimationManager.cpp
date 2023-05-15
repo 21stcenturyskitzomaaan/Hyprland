@@ -1,5 +1,6 @@
 #include "AnimationManager.hpp"
 #include "../Compositor.hpp"
+#include "HookSystemManager.hpp"
 
 int wlTick(void* data) {
 
@@ -7,7 +8,10 @@ int wlTick(void* data) {
 
     wl_event_source_timer_update(g_pAnimationManager->m_pAnimationTick, 1000 / refreshRate);
 
-    g_pAnimationManager->tick();
+    if (g_pCompositor->m_bSessionActive && std::ranges::any_of(g_pCompositor->m_vMonitors, [](const auto& mon) { return mon->m_bEnabled && mon->output; })) {
+        g_pAnimationManager->tick();
+        EMIT_HOOK_EVENT("tick", nullptr);
+    }
 
     return 0;
 }
@@ -78,13 +82,19 @@ void CAnimationManager::tick() {
         if (PWINDOW) {
             WLRBOXPREV         = PWINDOW->getFullWindowBoundingBox();
             PMONITOR           = g_pCompositor->getMonitorFromID(PWINDOW->m_iMonitorID);
+            if (!PMONITOR)
+                continue;
             animationsDisabled = animationsDisabled || PWINDOW->m_sAdditionalConfigData.forceNoAnims;
         } else if (PWORKSPACE) {
             PMONITOR   = g_pCompositor->getMonitorFromID(PWORKSPACE->m_iMonitorID);
+            if (!PMONITOR)
+                continue;
             WLRBOXPREV = {(int)PMONITOR->vecPosition.x, (int)PMONITOR->vecPosition.y, (int)PMONITOR->vecSize.x, (int)PMONITOR->vecSize.y};
         } else if (PLAYER) {
             WLRBOXPREV = PLAYER->geometry;
             PMONITOR   = g_pCompositor->getMonitorFromVector(Vector2D(PLAYER->geometry.x, PLAYER->geometry.y) + Vector2D(PLAYER->geometry.width, PLAYER->geometry.height) / 2.f);
+            if (!PMONITOR)
+                continue;
             animationsDisabled = animationsDisabled || PLAYER->noAnimations;
         }
 

@@ -280,12 +280,28 @@ void CWindow::moveToWorkspace(int workspaceID) {
     const auto PWORKSPACE = g_pCompositor->getWorkspaceByID(m_iWorkspaceID);
 
     if (PWORKSPACE) {
-        g_pEventManager->postEvent(SHyprIPCEvent{"movewindow", getFormat("%x,%s", this, PWORKSPACE->m_szName.c_str())});
+        g_pEventManager->postEvent(SHyprIPCEvent{"movewindow", getFormat("%lx,%s", this, PWORKSPACE->m_szName.c_str())});
         EMIT_HOOK_EVENT("moveWindow", (std::vector<void*>{this, PWORKSPACE}));
+    }
+
+    if (m_pSwallowed) {
+        m_pSwallowed->moveToWorkspace(workspaceID);
+        m_pSwallowed->m_iMonitorID = m_iMonitorID;
     }
 
     if (PMONITOR)
         g_pProtocolManager->m_pFractionalScaleProtocolManager->setPreferredScaleForSurface(m_pWLSurface.wlr(), PMONITOR->scale);
+
+    if (!m_bIsMapped)
+        return;
+
+    wlr_surface_for_each_surface(
+        m_pWLSurface.wlr(),
+        [](wlr_surface* surf, int x, int y, void* data) {
+            const auto PMONITOR = g_pCompositor->getMonitorFromID(((CWindow*)data)->m_iMonitorID);
+            g_pProtocolManager->m_pFractionalScaleProtocolManager->setPreferredScaleForSurface(surf, PMONITOR ? PMONITOR->scale : 1.f);
+        },
+        this);
 }
 
 CWindow* CWindow::X11TransientFor() {
@@ -343,6 +359,8 @@ void CWindow::onUnmap() {
 
     if (PMONITOR && PMONITOR->m_pSolitaryClient == this)
         PMONITOR->m_pSolitaryClient = nullptr;
+
+    hyprListener_unmapWindow.removeCallback();
 }
 
 void CWindow::onMap() {
@@ -374,6 +392,8 @@ void CWindow::onMap() {
     m_fBorderAngleAnimationProgress = 1.f;
 
     g_pCompositor->m_vWindowFocusHistory.push_back(this);
+
+    hyprListener_unmapWindow.initCallback(m_bIsX11 ? &m_uSurface.xwayland->events.unmap : &m_uSurface.xdg->events.unmap, &Events::listener_unmapWindow, this, "CWindow");
 }
 
 void CWindow::onBorderAngleAnimEnd(void* ptr) {
@@ -411,8 +431,10 @@ void CWindow::applyDynamicRule(const SWindowRule& r) {
         m_sAdditionalConfigData.forceNoBorder = true;
     } else if (r.szRule == "noshadow") {
         m_sAdditionalConfigData.forceNoShadow = true;
+    } else if (r.szRule == "forcergbx") {
+        m_sAdditionalConfigData.forceRGBX = true;
     } else if (r.szRule == "opaque") {
-        if (!m_sAdditionalConfigData.forceOpaqueOverriden)
+        if (!m_sAdditionalConfigData.forceOpaqueOverridden)
             m_sAdditionalConfigData.forceOpaque = true;
     } else if (r.szRule == "immediate") {
         m_sAdditionalConfigData.forceTearing = true;
@@ -471,13 +493,14 @@ void CWindow::updateDynamicRules() {
     m_sAdditionalConfigData.forceNoBlur      = false;
     m_sAdditionalConfigData.forceNoBorder    = false;
     m_sAdditionalConfigData.forceNoShadow    = false;
-    if (!m_sAdditionalConfigData.forceOpaqueOverriden)
+    if (!m_sAdditionalConfigData.forceOpaqueOverridden)
         m_sAdditionalConfigData.forceOpaque = false;
     m_sAdditionalConfigData.forceNoAnims   = false;
     m_sAdditionalConfigData.animationStyle = std::string("");
     m_sAdditionalConfigData.rounding       = -1;
     m_sAdditionalConfigData.dimAround      = false;
     m_sAdditionalConfigData.forceTearing   = false;
+    m_sAdditionalConfigData.forceRGBX      = false;
 
     const auto WINDOWRULES = g_pConfigManager->getMatchingRules(this);
     for (auto& r : WINDOWRULES) {
@@ -649,6 +672,26 @@ void CWindow::updateGroupOutputs() {
         curr = curr->m_sGroupData.pNextWindow;
     }
 }
+
+Vector2D CWindow::middle() {
+    return m_vRealPosition.goalv() + m_vRealSize.goalv() / 2.f;
+}
+
+bool CWindow::opaque() {
+    if (m_bIsX11)
+        return !m_uSurface.xwayland->has_alpha;
+
+    if (m_uSurface.xdg->surface->opaque)
+        return true;
+
+    const auto EXTENTS = pixman_region32_extents(&m_uSurface.xdg->surface->opaque_region);
+    if (EXTENTS->x2 - EXTENTS->x1 >= m_uSurface.xdg->surface->current.buffer_width
+        && EXTENTS->y2 - EXTENTS->y1 >= m_uSurface.xdg->surface->current.buffer_height)
+        return true;
+
+    return false;
+}
+
 
 bool CWindow::canBeTorn() {
     return (m_sAdditionalConfigData.forceTearing.toUnderlying() || m_bTearingHint) && g_pHyprRenderer->m_bTearingSupported;

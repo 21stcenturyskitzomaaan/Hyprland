@@ -13,6 +13,9 @@ on the same machine.
 
 See examples/examplePlugin for an example plugin
 
+ * NOTE:
+Feel like the API is missing something you'd like to use in your plugin? Open an issue on github!
+
 */
 
 #define HYPRLAND_API_VERSION "0.1"
@@ -32,6 +35,12 @@ typedef struct {
     std::string author;
     std::string version;
 } PLUGIN_DESCRIPTION_INFO;
+
+struct SFunctionMatch {
+    void*       address = nullptr;
+    std::string signature;
+    std::string demangled;
+};
 
 #define APICALL extern "C"
 #define EXPORT  __attribute__((visibility("default")))
@@ -185,8 +194,10 @@ namespace HyprlandAPI {
         This is useful for hooking private functions.
 
         returns: function address, or nullptr on fail.
+
+        Deprecated because of findFunctionsByName.
     */
-    APICALL void* getFunctionAddressFromSignature(HANDLE handle, const std::string& sig);
+    APICALL [[deprecated]] void* getFunctionAddressFromSignature(HANDLE handle, const std::string& sig);
 
     /*
         Adds a window decoration to a window
@@ -230,4 +241,13 @@ namespace HyprlandAPI {
         returns: true on success. False otherwise.
     */
     APICALL bool addNotificationV2(HANDLE handle, const std::unordered_map<std::string, std::any>& data);
+
+    /*
+        Returns a vector of found functions matching the provided name.
+
+        These addresses will not change, and should be made static. Lookups are slow.
+
+        Empty means either none found or handle was invalid
+    */
+    APICALL std::vector<SFunctionMatch> findFunctionsByName(HANDLE handle, const std::string& name);
 };

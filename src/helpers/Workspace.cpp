@@ -98,15 +98,6 @@ void CWorkspace::startAnim(bool in, bool left, bool instant) {
         m_vRenderOffset.warp();
         m_fAlpha.warp();
     }
-
-    // check LS-es
-    if (in && !m_bIsSpecialWorkspace) {
-        const auto PMONITOR = g_pCompositor->getMonitorFromID(m_iMonitorID);
-        for (auto& ls : PMONITOR->m_aLayerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP]) {
-            if (!ls->fadingOut)
-                ls->alpha = m_bHasFullscreenWindow && m_efFullscreenMode == FULLSCREEN_FULL ? 0.f : 1.f;
-        }
-    }
 }
 
 void CWorkspace::setActive(bool on) {
@@ -142,4 +133,31 @@ CWindow* CWorkspace::getLastFocusedWindow() {
         return nullptr;
 
     return m_pLastFocusedWindow;
+}
+
+void CWorkspace::rememberPrevWorkspace(const CWorkspace* prev) {
+    if (!prev) {
+        m_sPrevWorkspace.iID  = -1;
+        m_sPrevWorkspace.name = "";
+        return;
+    }
+
+    if (prev->m_sPrevWorkspace.iID == m_sPrevWorkspace.iID) {
+        Debug::log(LOG, "Tried to set prev workspace to the same as current one");
+        return;
+    }
+
+    m_sPrevWorkspace.iID  = prev->m_iID;
+    m_sPrevWorkspace.name = prev->m_szName;
+}
+
+std::string CWorkspace::getConfigName() {
+    if (m_bIsSpecialWorkspace) {
+        return "special:" + m_szName;
+    }
+
+    if (m_iID > 0)
+        return std::to_string(m_iID);
+
+    return "name:" + m_szName;
 }

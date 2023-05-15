@@ -47,13 +47,22 @@ class CWorkspace {
     CWindow* m_pLastFocusedWindow = nullptr;
 
     // user-set
-    bool     m_bDefaultFloating = false;
-    bool     m_bDefaultPseudo   = false;
+    bool m_bDefaultFloating = false;
+    bool m_bDefaultPseudo   = false;
 
-    void     startAnim(bool in, bool left, bool instant = false);
-    void     setActive(bool on);
+    // don't destroy in sanity check
+    bool m_bIndestructible = false;
 
-    void     moveToMonitor(const int&);
+    // last monitor (used on reconnect)
+    std::string m_szLastMonitor = "";
 
-    CWindow* getLastFocusedWindow();
+    void        startAnim(bool in, bool left, bool instant = false);
+    void        setActive(bool on);
+
+    void        moveToMonitor(const int&);
+
+    CWindow*    getLastFocusedWindow();
+    void        rememberPrevWorkspace(const CWorkspace* prevWorkspace);
+
+    std::string getConfigName();
 };

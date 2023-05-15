@@ -76,7 +76,7 @@ void IHyprLayout::onWindowCreatedFloating(CWindow* pWindow) {
     const auto PMONITOR = g_pCompositor->getMonitorFromID(pWindow->m_iMonitorID);
 
     if (!PMONITOR) {
-        Debug::log(ERR, "Window %x (%s) has an invalid monitor in onWindowCreatedFloating!!!", pWindow, pWindow->m_szTitle.c_str());
+        Debug::log(ERR, "Window %lx (%s) has an invalid monitor in onWindowCreatedFloating!!!", pWindow, pWindow->m_szTitle.c_str());
         return;
     }
 
@@ -267,15 +267,15 @@ void IHyprLayout::onMouseMove(const Vector2D& mousePos) {
         return;
     }
 
-    static auto TIMER = std::chrono::high_resolution_clock::now();
+    static auto        TIMER = std::chrono::high_resolution_clock::now();
 
-    const auto  SPECIAL = g_pCompositor->isWorkspaceSpecial(DRAGGINGWINDOW->m_iWorkspaceID);
+    const auto         SPECIAL = g_pCompositor->isWorkspaceSpecial(DRAGGINGWINDOW->m_iWorkspaceID);
 
-    const auto  DELTA     = Vector2D(mousePos.x - m_vBeginDragXY.x, mousePos.y - m_vBeginDragXY.y);
-    const auto  TICKDELTA = Vector2D(mousePos.x - m_vLastDragXY.x, mousePos.y - m_vLastDragXY.y);
+    const auto         DELTA     = Vector2D(mousePos.x - m_vBeginDragXY.x, mousePos.y - m_vBeginDragXY.y);
+    const auto         TICKDELTA = Vector2D(mousePos.x - m_vLastDragXY.x, mousePos.y - m_vLastDragXY.y);
 
-    const auto  PANIMATEMOUSE = &g_pConfigManager->getConfigValuePtr("misc:animate_mouse_windowdragging")->intValue;
-    const auto  PANIMATE      = &g_pConfigManager->getConfigValuePtr("misc:animate_manual_resizes")->intValue;
+    static auto* const PANIMATEMOUSE = &g_pConfigManager->getConfigValuePtr("misc:animate_mouse_windowdragging")->intValue;
+    static auto* const PANIMATE      = &g_pConfigManager->getConfigValuePtr("misc:animate_manual_resizes")->intValue;
 
     if ((abs(TICKDELTA.x) < 1.f && abs(TICKDELTA.y) < 1.f) ||
         (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - TIMER).count() <
@@ -368,7 +368,7 @@ void IHyprLayout::changeWindowFloatingMode(CWindow* pWindow) {
     const auto TILED = isWindowTiled(pWindow);
 
     // event
-    g_pEventManager->postEvent(SHyprIPCEvent{"changefloatingmode", getFormat("%x,%d", pWindow, (int)TILED)});
+    g_pEventManager->postEvent(SHyprIPCEvent{"changefloatingmode", getFormat("%lx,%d", pWindow, (int)TILED)});
     EMIT_HOOK_EVENT("changeFloatingMode", pWindow);
 
     if (!TILED) {
@@ -403,6 +403,11 @@ void IHyprLayout::changeWindowFloatingMode(CWindow* pWindow) {
         onWindowRemovedTiling(pWindow);
 
         g_pCompositor->moveWindowToTop(pWindow);
+
+        if (DELTALESSTHAN(pWindow->m_vRealSize.vec().x, pWindow->m_vLastFloatingSize.x, 10) && DELTALESSTHAN(pWindow->m_vRealSize.vec().y, pWindow->m_vLastFloatingSize.y, 10)) {
+            pWindow->m_vRealPosition = pWindow->m_vRealPosition.goalv() + (pWindow->m_vRealSize.goalv() - pWindow->m_vLastFloatingSize) / 2.f + Vector2D{10, 10};
+            pWindow->m_vRealSize     = pWindow->m_vLastFloatingSize - Vector2D{20, 20};
+        }
 
         pWindow->m_vRealPosition = pWindow->m_vRealPosition.goalv() + (pWindow->m_vRealSize.goalv() - pWindow->m_vLastFloatingSize) / 2.f;
         pWindow->m_vRealSize     = pWindow->m_vLastFloatingSize;

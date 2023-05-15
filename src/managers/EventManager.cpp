@@ -12,14 +12,15 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #include <string>
 
 CEventManager::CEventManager() {}
 
 int fdHandleWrite(int fd, uint32_t mask, void* data) {
-    if (mask & WL_EVENT_ERROR || mask & WL_EVENT_HANGUP) {
-        // remove, hanged up
+
+    auto removeFD = [&](int fd) -> void {
         const auto ACCEPTEDFDS = (std::deque<std::pair<int, wl_event_source*>>*)data;
         for (auto it = ACCEPTEDFDS->begin(); it != ACCEPTEDFDS->end();) {
             if (it->first == fd) {
@@ -29,6 +30,27 @@ int fdHandleWrite(int fd, uint32_t mask, void* data) {
                 it++;
             }
         }
+    };
+
+    if (mask & WL_EVENT_ERROR || mask & WL_EVENT_HANGUP) {
+        // remove, hanged up
+        removeFD(fd);
+        return 0;
+    }
+
+    int availableBytes;
+    if (ioctl(fd, FIONREAD, &availableBytes) == -1) {
+        Debug::log(ERR, "fd %d sent invalid data (1)", fd);
+        removeFD(fd);
+        return 0;
+    }
+
+    char       buf[availableBytes];
+    const auto RECEIVED = recv(fd, buf, availableBytes, 0);
+    if (RECEIVED == -1) {
+        Debug::log(ERR, "fd %d sent invalid data (2)", fd);
+        removeFD(fd);
+        return 0;
     }
 
     return 0;
@@ -45,7 +67,7 @@ void CEventManager::startThread() {
 
         sockaddr_un SERVERADDRESS = {.sun_family = AF_UNIX};
         std::string socketPath    = "/tmp/hypr/" + g_pCompositor->m_szInstanceSignature + "/.socket2.sock";
-        strcpy(SERVERADDRESS.sun_path, socketPath.c_str());
+        strncpy(SERVERADDRESS.sun_path, socketPath.c_str(), sizeof(SERVERADDRESS.sun_path) - 1);
 
         bind(SOCKET, (sockaddr*)&SERVERADDRESS, SUN_LEN(&SERVERADDRESS));
 

@@ -28,7 +28,8 @@
 #include "hyprerror/HyprError.hpp"
 #include "plugins/PluginSystem.hpp"
 
-enum eManagersInitStage {
+enum eManagersInitStage
+{
     STAGE_PRIORITY = 0,
     STAGE_LATE
 };
@@ -169,8 +170,9 @@ class CCompositor {
     void           moveWorkspaceToMonitor(CWorkspace*, CMonitor*);
     void           swapActiveWorkspaces(CMonitor*, CMonitor*);
     CMonitor*      getMonitorFromString(const std::string&);
-    bool           workspaceIDOutOfBounds(const int&);
+    bool           workspaceIDOutOfBounds(const int64_t&);
     void           setWindowFullscreen(CWindow*, bool, eFullscreenMode);
+    void           updateFullscreenFadeOnWorkspace(CWorkspace*);
     CWindow*       getX11Parent(CWindow*);
     void           scheduleFrameForMonitor(CMonitor*);
     void           addToFadingOutSafe(SLayerSurface*);
@@ -189,6 +191,7 @@ class CCompositor {
     bool           isWorkspaceSpecial(const int&);
     int            getNewSpecialID();
     void           performUserChecks();
+    void           moveWindowToWorkspaceSafe(CWindow* pWindow, CWorkspace* pWorkspace);
 
     std::string    explicitConfigPath;
 
@@ -214,4 +217,5 @@ inline std::map<std::string, xcb_atom_t> HYPRATOMS = {HYPRATOM("_NET_WM_WINDOW_T
                                                       HYPRATOM("_NET_WM_WINDOW_TYPE_DROPDOWN_MENU"),
                                                       HYPRATOM("_NET_WM_WINDOW_TYPE_POPUP_MENU"),
                                                       HYPRATOM("_NET_WM_WINDOW_TYPE_TOOLTIP"),
-                                                      HYPRATOM("_NET_WM_WINDOW_TYPE_NOTIFICATION")};
+                                                      HYPRATOM("_NET_WM_WINDOW_TYPE_NOTIFICATION"),
+                                                      HYPRATOM("_KDE_NET_WM_WINDOW_TYPE_OVERRIDE")};

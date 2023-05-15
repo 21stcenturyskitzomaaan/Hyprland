@@ -10,6 +10,10 @@ project(Hyprland
     VERSION ${VER}
 )
 
+set(HYPRLAND_VERSION ${VER})
+set(PREFIX ${CMAKE_INSTALL_PREFIX})
+configure_file(hyprland.pc.in hyprland.pc @ONLY) 
+
 set(CMAKE_MESSAGE_LOG_LEVEL "STATUS")
 
 message(STATUS "Gathering git info")
@@ -39,8 +43,23 @@ execute_process(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     OUTPUT_VARIABLE GIT_DIRTY
     OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+execute_process(
+    COMMAND sh -c "git describe --tags"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_TAG
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 #
 #
+
+find_program(WaylandScanner NAMES wayland-scanner)
+message(STATUS "Found WaylandScanner at ${WaylandScanner}")
+execute_process(
+    COMMAND pkg-config --variable=pkgdatadir wayland-protocols
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE WAYLAND_PROTOCOLS_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+message(STATUS "Found wayland-protocols at ${WAYLAND_PROTOCOLS_DIR}")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES DEBUG)
     message(STATUS "Configuring Hyprland in Debug with CMake")
@@ -54,7 +73,8 @@ include_directories(
   .
   "subprojects/wlroots/include/"
   "subprojects/wlroots/build/include/"
-  "subprojects/udis86/")
+  "subprojects/udis86/"
+  "protocols/")
 set(CMAKE_CXX_STANDARD 23)
 add_compile_definitions(WLR_USE_UNSTABLE)
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-unused-value -Wno-missing-field-initializers -Wno-narrowing -Wno-pointer-arith)
@@ -66,7 +86,8 @@ message(STATUS "Checking deps...")
 find_package(Threads REQUIRED)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(deps REQUIRED IMPORTED_TARGET wayland-server wayland-client wayland-cursor wayland-protocols cairo libdrm egl xkbcommon libinput pango pangocairo) # we do not check for wlroots, as we provide it ourselves
+find_package(OpenGL REQUIRED)
+pkg_check_modules(deps REQUIRED IMPORTED_TARGET wayland-server wayland-client wayland-cursor wayland-protocols cairo libdrm xkbcommon libinput pango pangocairo pixman-1) # we do not check for wlroots, as we provide it ourselves
 
 file(GLOB_RECURSE SRCFILES CONFIGURE_DEPENDS "src/*.cpp")
 
@@ -84,7 +105,7 @@ endif()
 include(CheckLibraryExists)
 check_library_exists(execinfo backtrace "" HAVE_LIBEXECINFO)
 if(HAVE_LIBEXECINFO)
-    target_link_libraries(Hyprland PRIVATE execinfo)
+    target_link_libraries(Hyprland execinfo)
 endif()
 
 if(LEGACY_RENDERER)
@@ -97,8 +118,8 @@ if(NO_XWAYLAND)
     add_compile_definitions(NO_XWAYLAND)
 else()
     message(STATUS "XWAYLAND Enabled (NO_XWAYLAND not defined) checking deps...")
-    pkg_check_modules(xcbdep REQUIRED xcb)
-    target_link_libraries(Hyprland xcb)
+    pkg_check_modules(xcbdep REQUIRED IMPORTED_TARGET xcb)
+    target_link_libraries(Hyprland PkgConfig::xcbdep)
 endif()
 
 if(NO_SYSTEMD)
@@ -120,7 +141,8 @@ target_compile_definitions(Hyprland
     "GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
     "GIT_BRANCH=\"${GIT_BRANCH}\""
     "GIT_COMMIT_MESSAGE=\"${GIT_COMMIT_MESSAGE}\""
-    "GIT_DIRTY=\"${GIT_DIRTY}\"")
+    "GIT_DIRTY=\"${GIT_DIRTY}\""
+    "GIT_TAG=\"${GIT_TAG}\"")
 
 target_link_libraries(Hyprland rt)
 
@@ -130,19 +152,47 @@ include(CPack)
 
 message(STATUS "Setting link libraries")
 
+function(protocol protoPath protoName external)
+    if (external)
+        execute_process(
+            COMMAND ${WaylandScanner} server-header ${protoPath} protocols/${protoName}-protocol.h
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        execute_process(
+            COMMAND ${WaylandScanner} private-code ${protoPath} protocols/${protoName}-protocol.c
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})  
+        target_sources(Hyprland PRIVATE protocols/${protoName}-protocol.c)
+    else()
+        execute_process(
+            COMMAND ${WaylandScanner} server-header ${WAYLAND_PROTOCOLS_DIR}/${protoPath} protocols/${protoName}-protocol.h
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        execute_process(
+            COMMAND ${WaylandScanner} private-code ${WAYLAND_PROTOCOLS_DIR}/${protoPath} protocols/${protoName}-protocol.c
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})  
+        target_sources(Hyprland PRIVATE protocols/${protoName}-protocol.c)
+    endif()
+endfunction()
+
 target_link_libraries(Hyprland PkgConfig::deps)
 
 target_link_libraries(Hyprland
         ${CMAKE_SOURCE_DIR}/subprojects/wlroots/build/libwlroots.so.12032 # wlroots is provided by us
-        pixman-1
-        OpenGL
-        GLESv2
-        pthread
-        ${CMAKE_THREAD_LIBS_INIT}
-        ${CMAKE_SOURCE_DIR}/ext-workspace-unstable-v1-protocol.o
-        ${CMAKE_SOURCE_DIR}/wlr-foreign-toplevel-management-unstable-v1-protocol.o
-        ${CMAKE_SOURCE_DIR}/hyprland-toplevel-export-v1-protocol.o
-        ${CMAKE_SOURCE_DIR}/fractional-scale-v1-protocol.o
-        ${CMAKE_SOURCE_DIR}/text-input-unstable-v1-protocol.o
+        OpenGL::EGL
+        OpenGL::GL
+        Threads::Threads
         ${CMAKE_SOURCE_DIR}/subprojects/udis86/build/libudis86/liblibudis86.a
 )
+
+protocol("protocols/ext-workspace-unstable-v1.xml" "ext-workspace-unstable-v1" true)
+protocol("protocols/idle.xml" "idle" true)
+protocol("protocols/pointer-constraints-unstable-v1.xml" "pointer-constraints-unstable-v1" true)
+protocol("protocols/tablet-unstable-v2.xml" "tablet-unstable-v2" true)
+protocol("protocols/wlr-foreign-toplevel-management-unstable-v1.xml" "wlr-foreign-toplevel-management-unstable-v1" true)
+protocol("protocols/wlr-layer-shell-unstable-v1.xml" "wlr-layer-shell-unstable-v1" true)
+protocol("protocols/wlr-output-power-management-unstable-v1.xml" "wlr-output-power-management-unstable-v1" true)
+protocol("protocols/wlr-screencopy-unstable-v1.xml" "wlr-screencopy-unstable-v1" true)
+protocol("subprojects/hyprland-protocols/protocols/hyprland-global-shortcuts-v1.xml" "hyprland-global-shortcuts-v1" true)
+protocol("subprojects/hyprland-protocols/protocols/hyprland-toplevel-export-v1.xml" "hyprland-toplevel-export-v1" true)
+protocol("stable/xdg-shell/xdg-shell.xml" "xdg-shell" false)
+protocol("unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml" "linux-dmabuf-unstable-v1" false)
+protocol("staging/fractional-scale/fractional-scale-v1.xml" "fractional-scale-v1" false)
+protocol("unstable/text-input/text-input-unstable-v1.xml" "text-input-unstable-v1" false)

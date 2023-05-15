@@ -59,17 +59,27 @@ endif
 backtrace_dep = cpp_compiler.find_library('execinfo', required: false)
 systemd_dep = dependency('libsystemd', required: get_option('systemd'))
 
-if get_option('systemd').enabled() 
+if get_option('systemd').enabled()
   if systemd_dep.found()
     add_project_arguments('-DUSES_SYSTEMD', language: 'cpp')
-  else 
+  else
   	error('Cannot enable systemd in Hyprland: libsystemd was not found')
   endif
+endif
+
+if get_option('legacy_renderer').enabled()
+  add_project_arguments('-DLEGACY_RENDERER', language: 'cpp')
 endif
 
 if get_option('buildtype') == 'debug'
   add_project_arguments('-DHYPRLAND_DEBUG', language: 'cpp')
 endif
+
+globber = run_command('find', 'src', '-name', '*.h*', check: true)
+headers = globber.stdout().strip().split('\n')
+foreach file : headers
+  install_headers(file, subdir: 'hyprland', preserve_path: true)
+endforeach
 
 subdir('protocols')
 subdir('src')
@@ -77,3 +87,14 @@ subdir('hyprctl')
 subdir('assets')
 subdir('example')
 subdir('docs')
+
+pkg_install_dir = join_paths(get_option('datadir'), 'pkgconfig')
+
+import('pkgconfig').generate(
+  name: 'Hyprland',
+  filebase: 'hyprland',
+  url: 'https://github.com/hyprwm/Hyprland',
+  description: 'Hyprland header files',
+  install_dir: pkg_install_dir,
+  subdirs: ['', 'hyprland/protocols'],
+)

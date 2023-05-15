@@ -6,6 +6,7 @@
 #include "../helpers/Workspace.hpp"
 #include "../Window.hpp"
 #include "OpenGL.hpp"
+#include "../helpers/Timer.hpp"
 
 struct SMonitorRule;
 
@@ -45,12 +46,13 @@ class CHyprRenderer {
     void                            damageMonitor(CMonitor*);
     void                            damageMirrorsWith(CMonitor*, pixman_region32_t*);
     bool                            applyMonitorRule(CMonitor*, SMonitorRule*, bool force = false);
-    bool                            shouldRenderWindow(CWindow*, CMonitor*);
+    bool                            shouldRenderWindow(CWindow*, CMonitor*, CWorkspace*);
     bool                            shouldRenderWindow(CWindow*);
     void                            ensureCursorRenderingMode();
     bool                            shouldRenderCursor();
     void                            calculateUVForSurface(CWindow*, wlr_surface*, bool main = false);
     std::tuple<float, float, float> getRenderTimes(CMonitor* pMonitor); // avg max min
+    void                            renderLockscreen(CMonitor* pMonitor, timespec* now);
 
     bool                            m_bWindowRequestedCursorHide = false;
     bool                            m_bBlockSurfaceFeedback      = false;
@@ -58,12 +60,24 @@ class CHyprRenderer {
     bool                            m_bTearingSupported          = false;
     CWindow*                        m_pLastScanout               = nullptr;
     CMonitor*                       m_pMostHzMonitor             = nullptr;
+    bool                            m_bDirectScanoutBlocked      = false;
+    bool                            m_bSoftwareCursorsLocked     = false;
 
-    DAMAGETRACKINGMODES             damageTrackingModeFromStr(const std::string&);
+    DAMAGETRACKINGMODES
+    damageTrackingModeFromStr(const std::string&);
+
+    bool             attemptDirectScanout(CMonitor*);
+    void             setWindowScanoutMode(CWindow*);
+    void             initiateManualCrash();
+
+    bool             m_bCrashingInProgress = false;
+    float            m_fCrashingDistort    = 0.5f;
+    wl_event_source* m_pCrashingLoop       = nullptr;
 
     bool                            attemptDirectScanout(CMonitor*);
     void                            updateSolitaryClient(CMonitor*);
     void                            setWindowScanoutMode(CWindow*);
+    CTimer           m_tRenderTimer;
 
     std::list<STearingController> m_lTearingControllers;
 
@@ -75,6 +89,8 @@ class CHyprRenderer {
     void renderSessionLockSurface(SSessionLockSurface*, CMonitor*, timespec*);
     void renderDragIcon(CMonitor*, timespec*);
     void renderIMEPopup(SIMEPopup*, CMonitor*, timespec*);
+    void renderWorkspace(CMonitor* pMonitor, CWorkspace* pWorkspace, timespec* now, const wlr_box& geometry);
+    void renderAllClientsForWorkspace(CMonitor* pMonitor, CWorkspace* pWorkspace, timespec* now, const Vector2D& translate = {0, 0}, const float& scale = 1.f);
 
     bool m_bHasARenderedCursor = true;
 

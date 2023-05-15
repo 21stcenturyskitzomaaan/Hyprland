@@ -61,6 +61,7 @@ in
       outputs = [
         "out"
         "man"
+        "dev"
       ];
 
       buildInputs =
@@ -89,8 +90,9 @@ in
         else "release";
 
       mesonFlags = builtins.concatLists [
-        (lib.optional (!enableXWayland) "-Dxwayland=disabled")
-        (lib.optional legacyRenderer "-DLEGACY_RENDERER:STRING=true")
+        ["-Dauto_features=disabled"]
+        (lib.optional enableXWayland "-Dxwayland=enabled")
+        (lib.optional legacyRenderer "-Dlegacy_renderer=enabled")
         (lib.optional withSystemd "-Dsystemd=enabled")
       ];
 
@@ -104,7 +106,11 @@ in
         sed -i "s#/usr#$out#" src/render/OpenGL.cpp
         substituteInPlace meson.build \
           --replace "@GIT_COMMIT_HASH@" '${commit}' \
-          --replace "@GIT_DIRTY@" '${if commit == "" then "dirty" else ""}'
+          --replace "@GIT_DIRTY@" '${
+          if commit == ""
+          then "dirty"
+          else ""
+        }'
       '';
 
       passthru.providedSessions = ["hyprland"];

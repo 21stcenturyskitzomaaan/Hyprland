@@ -8,13 +8,27 @@ int ratHandler(void* data) {
     return 1;
 }
 
+CMonitor::CMonitor() {
+    wlr_damage_ring_init(&damage);
+}
+
+CMonitor::~CMonitor() {
+    wlr_damage_ring_finish(&damage);
+}
+
 void CMonitor::onConnect(bool noRule) {
     hyprListener_monitorDestroy.removeCallback();
     hyprListener_monitorFrame.removeCallback();
     hyprListener_monitorStateRequest.removeCallback();
+    hyprListener_monitorDamage.removeCallback();
+    hyprListener_monitorNeedsFrame.removeCallback();
+    hyprListener_monitorCommit.removeCallback();
     hyprListener_monitorFrame.initCallback(&output->events.frame, &Events::listener_monitorFrame, this);
     hyprListener_monitorDestroy.initCallback(&output->events.destroy, &Events::listener_monitorDestroy, this);
     hyprListener_monitorStateRequest.initCallback(&output->events.request_state, &Events::listener_monitorStateRequest, this);
+    hyprListener_monitorDamage.initCallback(&output->events.damage, &Events::listener_monitorDamage, this);
+    hyprListener_monitorNeedsFrame.initCallback(&output->events.needs_frame, &Events::listener_monitorNeedsFrame, this);
+    hyprListener_monitorCommit.initCallback(&output->events.commit, &Events::listener_monitorCommit, this);
 
     if (m_bEnabled) {
         wlr_output_enable(output, 1);
@@ -114,12 +128,12 @@ void CMonitor::onConnect(bool noRule) {
     if (!noRule)
         g_pHyprRenderer->applyMonitorRule(this, &monitorRule, true);
 
+    wlr_damage_ring_set_bounds(&damage, vecTransformedSize.x, vecTransformedSize.y);
+
     wlr_xcursor_manager_load(g_pCompositor->m_sWLRXCursorMgr, scale);
 
-    Debug::log(LOG, "Added new monitor with name %s at %i,%i with size %ix%i, pointer %x", output->name, (int)vecPosition.x, (int)vecPosition.y, (int)vecPixelSize.x,
+    Debug::log(LOG, "Added new monitor with name %s at %i,%i with size %ix%i, pointer %lx", output->name, (int)vecPosition.x, (int)vecPosition.y, (int)vecPixelSize.x,
                (int)vecPixelSize.y, output);
-
-    damage = wlr_output_damage_create(output);
 
     // add a WLR workspace group
     if (!pWLRWorkspaceGroupHandle) {
@@ -130,7 +144,17 @@ void CMonitor::onConnect(bool noRule) {
 
     setupDefaultWS(monitorRule);
 
+    for (auto& ws : g_pCompositor->m_vWorkspaces) {
+        if (ws->m_szLastMonitor == szName || g_pCompositor->m_vMonitors.size() == 1 /* avoid lost workspaces on recover */) {
+            g_pCompositor->moveWorkspaceToMonitor(ws.get(), this);
+            ws->startAnim(true, true, true);
+            ws->m_szLastMonitor = "";
+        }
+    }
+
     scale = monitorRule.scale;
+    if (scale < 0.1)
+        scale = getDefaultScale();
 
     m_pThisWrap = nullptr;
 
@@ -205,6 +229,9 @@ void CMonitor::onDisconnect() {
     m_bRenderingInitPassed = false;
 
     hyprListener_monitorFrame.removeCallback();
+    hyprListener_monitorDamage.removeCallback();
+    hyprListener_monitorNeedsFrame.removeCallback();
+    hyprListener_monitorCommit.removeCallback();
 
     for (size_t i = 0; i < 4; ++i) {
         for (auto& ls : m_aLayerSurfaceLayers[i]) {
@@ -245,13 +272,12 @@ void CMonitor::onDisconnect() {
     }
 
     for (auto& w : wspToMove) {
+        w->m_szLastMonitor = szName;
         g_pCompositor->moveWorkspaceToMonitor(w, BACKUPMON);
         w->startAnim(true, true, true);
     }
 
     activeWorkspace = -1;
-
-    wlr_output_damage_destroy(damage);
 
     wlr_output_layout_remove(g_pCompositor->m_sWLROutputLayout, output);
 
@@ -281,12 +307,26 @@ void CMonitor::onDisconnect() {
     std::erase_if(g_pCompositor->m_vMonitors, [&](std::shared_ptr<CMonitor>& el) { return el.get() == this; });
 }
 
-void CMonitor::addDamage(pixman_region32_t* rg) {
-    wlr_output_damage_add(damage, rg);
+void CMonitor::addDamage(const pixman_region32_t* rg) {
+    static auto* const PZOOMFACTOR = &g_pConfigManager->getConfigValuePtr("misc:cursor_zoom_factor")->floatValue;
+    if (*PZOOMFACTOR != 1.f && g_pCompositor->getMonitorFromCursor() == this) {
+        wlr_damage_ring_add_whole(&damage);
+        g_pCompositor->scheduleFrameForMonitor(this);
+    }
+
+    if (wlr_damage_ring_add(&damage, rg))
+        g_pCompositor->scheduleFrameForMonitor(this);
 }
 
-void CMonitor::addDamage(wlr_box* box) {
-    wlr_output_damage_add_box(damage, box);
+void CMonitor::addDamage(const wlr_box* box) {
+    static auto* const PZOOMFACTOR = &g_pConfigManager->getConfigValuePtr("misc:cursor_zoom_factor")->floatValue;
+    if (*PZOOMFACTOR != 1.f && g_pCompositor->getMonitorFromCursor() == this) {
+        wlr_damage_ring_add_whole(&damage);
+        g_pCompositor->scheduleFrameForMonitor(this);
+    }
+
+    if (wlr_damage_ring_add_box(&damage, box))
+        g_pCompositor->scheduleFrameForMonitor(this);
 }
 
 bool CMonitor::isMirror() {
@@ -347,6 +387,7 @@ void CMonitor::setupDefaultWS(const SMonitorRule& monitorRule) {
 
     g_pCompositor->deactivateAllWLRWorkspaces(PNEWWORKSPACE->m_pWlrHandle);
     PNEWWORKSPACE->setActive(true);
+    PNEWWORKSPACE->m_szLastMonitor = "";
 }
 
 void CMonitor::setMirror(const std::string& mirrorOf) {
@@ -455,4 +496,107 @@ float CMonitor::getDefaultScale() {
     else if (PPI > 140 /* Medium PPI, 1.5x*/)
         return 1.5;
     return 1;
+}
+
+void CMonitor::changeWorkspace(CWorkspace* const pWorkspace, bool internal) {
+    if (!pWorkspace)
+        return;
+
+    if (pWorkspace->m_bIsSpecialWorkspace) {
+        if (specialWorkspaceID != pWorkspace->m_iID) {
+            Debug::log(LOG, "changeworkspace on special, togglespecialworkspace to id %i", pWorkspace->m_iID);
+            g_pKeybindManager->m_mDispatchers["togglespecialworkspace"](pWorkspace->m_szName == "special" ? "" : pWorkspace->m_szName);
+        }
+        return;
+    }
+
+    if (pWorkspace->m_iID == activeWorkspace) {
+        // in some cases (e.g. workspace from one monitor to another)
+        // we need to send this
+        g_pCompositor->deactivateAllWLRWorkspaces(pWorkspace->m_pWlrHandle);
+        pWorkspace->setActive(true);
+        return;
+    }
+
+    const auto POLDWORKSPACE = g_pCompositor->getWorkspaceByID(activeWorkspace);
+
+    activeWorkspace = pWorkspace->m_iID;
+
+    if (!internal) {
+        const auto ANIMTOLEFT = pWorkspace->m_iID > POLDWORKSPACE->m_iID;
+        POLDWORKSPACE->startAnim(false, ANIMTOLEFT);
+        pWorkspace->startAnim(true, ANIMTOLEFT);
+
+        // move pinned windows
+        for (auto& w : g_pCompositor->m_vWindows) {
+            if (w->m_iWorkspaceID == POLDWORKSPACE->m_iID && w->m_bPinned) {
+                w->m_iWorkspaceID = pWorkspace->m_iID;
+            }
+        }
+
+        if (const auto PLASTWINDOW = pWorkspace->getLastFocusedWindow(); PLASTWINDOW)
+            g_pCompositor->focusWindow(PLASTWINDOW);
+        else {
+            g_pCompositor->focusWindow(nullptr);
+            g_pInputManager->refocus();
+        }
+
+        g_pLayoutManager->getCurrentLayout()->recalculateMonitor(ID);
+
+        // set some flags and fire event
+        g_pCompositor->deactivateAllWLRWorkspaces(pWorkspace->m_pWlrHandle);
+        pWorkspace->setActive(true);
+        g_pEventManager->postEvent(SHyprIPCEvent{"workspace", pWorkspace->m_szName});
+        EMIT_HOOK_EVENT("workspace", pWorkspace);
+    }
+
+    g_pHyprRenderer->damageMonitor(this);
+
+    g_pCompositor->updateFullscreenFadeOnWorkspace(pWorkspace);
+}
+
+void CMonitor::changeWorkspace(const int& id, bool internal) {
+    changeWorkspace(g_pCompositor->getWorkspaceByID(id), internal);
+}
+
+void CMonitor::setSpecialWorkspace(CWorkspace* const pWorkspace) {
+    g_pHyprRenderer->damageMonitor(this);
+
+    if (!pWorkspace) {
+        // remove special if exists
+        if (const auto EXISTINGSPECIAL = g_pCompositor->getWorkspaceByID(specialWorkspaceID); EXISTINGSPECIAL)
+            EXISTINGSPECIAL->startAnim(false, false);
+        specialWorkspaceID = 0;
+
+        g_pLayoutManager->getCurrentLayout()->recalculateMonitor(ID);
+
+        const auto PWORKSPACE = g_pCompositor->getWorkspaceByID(activeWorkspace);
+        if (const auto PLAST = PWORKSPACE->getLastFocusedWindow(); PLAST)
+            g_pCompositor->focusWindow(PLAST);
+        else
+            g_pInputManager->refocus();
+
+        return;
+    }
+
+    if (specialWorkspaceID) {
+        if (const auto EXISTINGSPECIAL = g_pCompositor->getWorkspaceByID(specialWorkspaceID); EXISTINGSPECIAL)
+            EXISTINGSPECIAL->startAnim(false, false);
+    }
+
+    // open special
+    pWorkspace->m_iMonitorID = ID;
+    specialWorkspaceID       = pWorkspace->m_iID;
+    pWorkspace->startAnim(true, true);
+
+    g_pLayoutManager->getCurrentLayout()->recalculateMonitor(ID);
+
+    if (const auto PLAST = pWorkspace->getLastFocusedWindow(); PLAST)
+        g_pCompositor->focusWindow(PLAST);
+    else
+        g_pInputManager->refocus();
+}
+
+void CMonitor::setSpecialWorkspace(const int& id) {
+    setSpecialWorkspace(g_pCompositor->getWorkspaceByID(id));
 }

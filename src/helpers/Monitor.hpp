@@ -6,32 +6,38 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <xf86drmMode.h>
 #include "Timer.hpp"
 
 struct SMonitorRule;
 
 class CMonitor {
   public:
-    Vector2D    vecPosition        = Vector2D(-1, -1); // means unset
-    Vector2D    vecSize            = Vector2D(0, 0);
-    Vector2D    vecPixelSize       = Vector2D(0, 0);
-    Vector2D    vecTransformedSize = Vector2D(0, 0);
+    CMonitor();
+    ~CMonitor();
 
-    bool        primary = false;
+    Vector2D        vecPosition        = Vector2D(-1, -1); // means unset
+    Vector2D        vecSize            = Vector2D(0, 0);
+    Vector2D        vecPixelSize       = Vector2D(0, 0);
+    Vector2D        vecTransformedSize = Vector2D(0, 0);
 
-    uint64_t    ID              = -1;
-    int         activeWorkspace = -1;
-    float       scale           = 1;
+    bool            primary = false;
 
-    std::string szName = "";
+    uint64_t        ID              = -1;
+    int             activeWorkspace = -1;
+    float           scale           = 1;
 
-    Vector2D    vecReservedTopLeft     = Vector2D(0, 0);
-    Vector2D    vecReservedBottomRight = Vector2D(0, 0);
+    std::string     szName = "";
+
+    Vector2D        vecReservedTopLeft     = Vector2D(0, 0);
+    Vector2D        vecReservedBottomRight = Vector2D(0, 0);
+
+    drmModeModeInfo customDrmMode = {};
 
     // WLR stuff
+    wlr_damage_ring     damage;
     wlr_output*         output          = nullptr;
     float               refreshRate     = 60;
-    wlr_output_damage*  damage          = nullptr;
     int                 framesToSkip    = 0;
     int                 forceFullFrames = 0;
     bool                noFrameSchedule = false;
@@ -65,6 +71,9 @@ class CMonitor {
     DYNLISTENER(monitorFrame);
     DYNLISTENER(monitorDestroy);
     DYNLISTENER(monitorStateRequest);
+    DYNLISTENER(monitorDamage);
+    DYNLISTENER(monitorNeedsFrame);
+    DYNLISTENER(monitorCommit);
 
     // hack: a group = workspaces on a monitor.
     // I don't really care lol :P
@@ -73,11 +82,15 @@ class CMonitor {
     // methods
     void                       onConnect(bool noRule);
     void                       onDisconnect();
-    void                       addDamage(pixman_region32_t* rg);
-    void                       addDamage(wlr_box* box);
+    void                       addDamage(const pixman_region32_t* rg);
+    void                       addDamage(const wlr_box* box);
     void                       setMirror(const std::string&);
     bool                       isMirror();
     float                      getDefaultScale();
+    void                       changeWorkspace(CWorkspace* const pWorkspace, bool internal = false);
+    void                       changeWorkspace(const int& id, bool internal = false);
+    void                       setSpecialWorkspace(CWorkspace* const pWorkspace);
+    void                       setSpecialWorkspace(const int& id);
 
     std::shared_ptr<CMonitor>* m_pThisWrap            = nullptr;
     bool                       m_bEnabled             = false;

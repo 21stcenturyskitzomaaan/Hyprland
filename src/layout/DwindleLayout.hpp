@@ -9,6 +9,14 @@
 class CHyprDwindleLayout;
 enum eFullscreenMode : uint8_t;
 
+enum OneTimeFocus {
+    UP = 0,
+    RIGHT,
+    DOWN,
+    LEFT,
+    NOFOCUS,
+};
+
 struct SDwindleNodeData {
     SDwindleNodeData*                pParent = nullptr;
     bool                             isNode  = false;
@@ -34,7 +42,7 @@ struct SDwindleNodeData {
             children[0] == rhs.children[0] && children[1] == rhs.children[1];
     }
 
-    void                recalcSizePosRecursive(bool force = false);
+    void                recalcSizePosRecursive(bool force = false, bool horizontalOverride = false, bool verticalOverride = false);
     void                getAllChildrenRecursive(std::deque<SDwindleNodeData*>*);
     CHyprDwindleLayout* layout = nullptr;
 };
@@ -46,6 +54,7 @@ class CHyprDwindleLayout : public IHyprLayout {
     virtual bool                     isWindowTiled(CWindow*);
     virtual void                     recalculateMonitor(const int&);
     virtual void                     recalculateWindow(CWindow*);
+    virtual void                     onBeginDragWindow();
     virtual void                     resizeActiveWindow(const Vector2D&, CWindow* pWindow = nullptr);
     virtual void                     fullscreenRequestForWindow(CWindow*, eFullscreenMode, bool);
     virtual std::any                 layoutMessage(SLayoutMessageHeader, std::string);
@@ -61,13 +70,22 @@ class CHyprDwindleLayout : public IHyprLayout {
   private:
     std::list<SDwindleNodeData> m_lDwindleNodesData;
 
-    int                         getNodesOnWorkspace(const int&);
-    void                        applyNodeDataToWindow(SDwindleNodeData*, bool force = false);
-    SDwindleNodeData*           getNodeFromWindow(CWindow*);
-    SDwindleNodeData*           getFirstNodeOnWorkspace(const int&);
-    SDwindleNodeData*           getMasterNodeOnWorkspace(const int&);
+    struct {
+        bool started = false;
+        bool pseudo  = false;
+        bool xExtent = false;
+        bool yExtent = false;
+    } m_PseudoDragFlags;
 
-    void                        toggleSplit(CWindow*);
+    int               getNodesOnWorkspace(const int&);
+    void              applyNodeDataToWindow(SDwindleNodeData*, bool force = false);
+    SDwindleNodeData* getNodeFromWindow(CWindow*);
+    SDwindleNodeData* getFirstNodeOnWorkspace(const int&);
+    SDwindleNodeData* getMasterNodeOnWorkspace(const int&);
+
+    void              toggleSplit(CWindow*);
+
+    OneTimeFocus      overrideDirection = OneTimeFocus::NOFOCUS;
 
     friend struct SDwindleNodeData;
 };

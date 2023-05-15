@@ -5,7 +5,7 @@ wayland_protos = dependency('wayland-protocols',
 )
 
 hyprland_protos = dependency('hyprland-protocols',
-	version: '>=0.1',
+	version: '>=0.2',
   fallback: 'hyprland-protocols',
 )
 
@@ -26,11 +26,13 @@ protocols = [
   ['wlr-foreign-toplevel-management-unstable-v1.xml'],
   ['wlr-layer-shell-unstable-v1.xml'],
   ['wlr-output-power-management-unstable-v1.xml'],
+  ['wlr-screencopy-unstable-v1.xml'],
   ['ext-workspace-unstable-v1.xml'],
   ['pointer-constraints-unstable-v1.xml'],
   ['tablet-unstable-v2.xml'],
   ['idle.xml'],
-  [hl_protocol_dir, 'protocols/hyprland-toplevel-export-v1.xml']
+  [hl_protocol_dir, 'protocols/hyprland-toplevel-export-v1.xml'],
+  [hl_protocol_dir, 'protocols/hyprland-global-shortcuts-v1.xml']
 ]
 wl_protos_src = []
 wl_protos_headers = []
@@ -45,6 +47,8 @@ foreach p : protocols
 	wl_protos_headers += custom_target(
 		xml.underscorify() + '_server_h',
 		input: xml,
+		install: true,
+		install_dir: join_paths(get_option('includedir'), 'hyprland/protocols'),
 		output: '@BASENAME@-protocol.h',
 		command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
 	)

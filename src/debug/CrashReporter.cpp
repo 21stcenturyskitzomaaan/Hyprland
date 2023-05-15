@@ -48,7 +48,7 @@ void CrashReporter::createAndSaveCrash(int sig) {
 
     finalCrashReport += getFormat("Version: %s\n\n", GIT_COMMIT_HASH);
 
-    if (!g_pPluginSystem->getAllPlugins().empty()) {
+    if (g_pPluginSystem && !g_pPluginSystem->getAllPlugins().empty()) {
         finalCrashReport += "Hyprland seems to be running with plugins. This crash might not be Hyprland's fault.\nPlugins:\n";
 
         for (auto& p : g_pPluginSystem->getAllPlugins()) {
@@ -111,7 +111,7 @@ void CrashReporter::createAndSaveCrash(int sig) {
 #endif
 
     for (size_t i = 0; i < btSize; ++i) {
-        finalCrashReport += getFormat("\t#%i | %s\n", i, btSymbols[i]);
+        finalCrashReport += getFormat("\t#%lu | %s\n", i, btSymbols[i]);
 
 #ifdef __clang__
         const auto CMD = getFormat("llvm-addr2line -e %s -f 0x%lx", FPATH.c_str(), (uint64_t)bt[i]);
@@ -128,19 +128,39 @@ void CrashReporter::createAndSaveCrash(int sig) {
 
     finalCrashReport += execAndGet(("cat \"" + Debug::logFile + "\" | tail -n 50").c_str());
 
-    const auto HOME = getenv("HOME");
+    const auto HOME       = getenv("HOME");
+    const auto CACHE_HOME = getenv("XDG_CACHE_HOME");
 
     if (!HOME)
         return;
 
-    if (!std::filesystem::exists(std::string(HOME) + "/.hyprland")) {
-        std::filesystem::create_directory(std::string(HOME) + "/.hyprland");
-        std::filesystem::permissions(std::string(HOME) + "/.hyprland", std::filesystem::perms::all, std::filesystem::perm_options::replace);
-    }
+    std::ofstream ofs;
+    std::string path;
+    if (!CACHE_HOME) {
+        if (!std::filesystem::exists(std::string(HOME) + "/.hyprland")) {
+            std::filesystem::create_directory(std::string(HOME) + "/.hyprland");
+            std::filesystem::permissions(std::string(HOME) + "/.hyprland", std::filesystem::perms::all, std::filesystem::perm_options::replace);
+        }
 
-    std::ofstream ofs(std::string(HOME) + "/.hyprland/hyprlandCrashReport" + std::to_string(PID) + ".txt", std::ios::trunc);
+        path = std::string(HOME) + "/.hyprland/hyprlandCrashReport" + std::to_string(PID) + ".txt";
+        ofs.open(path, std::ios::trunc);
+
+    } else if (CACHE_HOME) {
+        if (!std::filesystem::exists(std::string(CACHE_HOME) + "/hyprland")) {
+            std::filesystem::create_directory(std::string(CACHE_HOME) + "/hyprland");
+            std::filesystem::permissions(std::string(CACHE_HOME) + "/hyprland", std::filesystem::perms::all, std::filesystem::perm_options::replace);
+        }
+
+        path = std::string(CACHE_HOME) + "/hyprland/hyprlandCrashReport" + std::to_string(PID) + ".txt";
+        ofs.open(path, std::ios::trunc);
+    } else {
+        return;
+    }
 
     ofs << finalCrashReport;
 
     ofs.close();
+
+    Debug::disableStdout = false;
+    Debug::log(CRIT, "Hyprland has crashed :( Consult the crash report at %s for more information.", path.c_str());
 }

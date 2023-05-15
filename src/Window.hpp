@@ -10,8 +10,7 @@
 #include "helpers/Vector2D.hpp"
 #include "helpers/WLSurface.hpp"
 
-enum eIdleInhibitMode
-{
+enum eIdleInhibitMode {
     IDLEINHIBIT_NONE = 0,
     IDLEINHIBIT_ALWAYS,
     IDLEINHIBIT_FULLSCREEN,
@@ -101,24 +100,26 @@ struct SWindowSpecialRenderData {
     CWindowOverridableVar<int64_t> inactiveBorderColor = -1; // -1 means unset
 
     // set by the layout
-    bool rounding = true;
-    bool border   = true;
-    bool decorate = true;
+    int  borderSize = -1;
+    bool rounding   = true;
+    bool border     = true;
+    bool decorate   = true;
 };
 
 struct SWindowAdditionalConfigData {
-    std::string                 animationStyle       = std::string("");
-    CWindowOverridableVar<int>  rounding             = -1; // -1 means no
-    CWindowOverridableVar<bool> forceNoBlur          = false;
-    CWindowOverridableVar<bool> forceOpaque          = false;
-    CWindowOverridableVar<bool> forceOpaqueOverriden = false; // if true, a rule will not change the forceOpaque state. This is for the force opaque dispatcher.
-    CWindowOverridableVar<bool> forceAllowsInput     = false;
-    CWindowOverridableVar<bool> forceNoAnims         = false;
-    CWindowOverridableVar<bool> forceNoBorder        = false;
-    CWindowOverridableVar<bool> forceNoShadow        = false;
-    CWindowOverridableVar<bool> windowDanceCompat    = false;
-    CWindowOverridableVar<bool> noMaxSize            = false;
-    CWindowOverridableVar<bool> dimAround            = false;
+    std::string                 animationStyle        = std::string("");
+    CWindowOverridableVar<int>  rounding              = -1; // -1 means no
+    CWindowOverridableVar<bool> forceNoBlur           = false;
+    CWindowOverridableVar<bool> forceOpaque           = false;
+    CWindowOverridableVar<bool> forceOpaqueOverridden = false; // if true, a rule will not change the forceOpaque state. This is for the force opaque dispatcher.
+    CWindowOverridableVar<bool> forceAllowsInput      = false;
+    CWindowOverridableVar<bool> forceNoAnims          = false;
+    CWindowOverridableVar<bool> forceNoBorder         = false;
+    CWindowOverridableVar<bool> forceNoShadow         = false;
+    CWindowOverridableVar<bool> windowDanceCompat     = false;
+    CWindowOverridableVar<bool> noMaxSize             = false;
+    CWindowOverridableVar<bool> dimAround             = false;
+    CWindowOverridableVar<bool> forceRGBX             = false;
     CWindowOverridableVar<bool> forceTearing         = false;
 };
 
@@ -195,6 +196,8 @@ class CWindow {
     bool        m_bWasMaximized  = false;
     uint64_t    m_iMonitorID     = -1;
     std::string m_szTitle        = "";
+    std::string m_szInitialTitle = "";
+    std::string m_szInitialClass = "";
     int         m_iWorkspaceID   = -1;
 
     bool        m_bIsMapped = false;
@@ -316,6 +319,8 @@ class CWindow {
     void                     applyDynamicRule(const SWindowRule& r);
     void                     updateDynamicRules();
     SWindowDecorationExtents getFullWindowReservedArea();
+    Vector2D                 middle();
+    bool                     opaque();
 
     void                     onBorderAngleAnimEnd(void* ptr);
     bool                     isInCurvedCorner(double x, double y);

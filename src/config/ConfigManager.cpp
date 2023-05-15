@@ -854,7 +854,7 @@ bool windowRuleValid(const std::string& RULE) {
              RULE.find("maxsize") != 0 && RULE.find("pseudo") != 0 && RULE.find("monitor") != 0 && RULE.find("idleinhibit") != 0 && RULE != "nofocus" && RULE != "noblur" &&
              RULE != "noshadow" && RULE != "noborder" && RULE != "center" && RULE != "opaque" && RULE != "forceinput" && RULE != "fullscreen" && RULE != "nofullscreenrequest" &&
              RULE != "fakefullscreen" && RULE != "nomaxsize" && RULE != "pin" && RULE != "noanim" && RULE != "dimaround" && RULE != "windowdance" && RULE != "maximize" &&
-             RULE.find("animation") != 0 && RULE.find("rounding") != 0 && RULE.find("workspace") != 0 && RULE.find("bordercolor") != 0 && RULE != "forcergbx" &&
+             RULE.find("animation") != 0 && RULE.find("rounding") != 0 && RULE.find("workspace") != 0 && RULE.find("bordercolor") != 0 && RULE != "immediate" && RULE != "forcergbx" &&
              RULE != "noinitialfocus");
 }
 
@@ -2149,4 +2149,12 @@ std::string CConfigManager::getDefaultWorkspaceFor(const std::string& name) {
     if (IT == m_dWorkspaceRules.end())
         return "";
     return IT->workspaceString;
+}
+
+std::vector<SWindowRule> CConfigManager::getAllWindowRules() {
+    std::vector<SWindowRule> rules{m_dWindowRules.size()};
+    for (int i = 0; i < m_dWindowRules.size(); ++i)
+        rules[i] = m_dWindowRules[i];
+
+    return rules;
 }

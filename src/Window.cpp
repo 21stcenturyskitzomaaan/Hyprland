@@ -355,6 +355,11 @@ void CWindow::onUnmap() {
 
     m_pWLSurface.unassign();
 
+    const auto PMONITOR = g_pCompositor->getMonitorFromID(m_iMonitorID);
+
+    if (PMONITOR && PMONITOR->m_pSolitaryClient == this)
+        PMONITOR->m_pSolitaryClient = nullptr;
+
     hyprListener_unmapWindow.removeCallback();
 }
 
@@ -431,6 +436,8 @@ void CWindow::applyDynamicRule(const SWindowRule& r) {
     } else if (r.szRule == "opaque") {
         if (!m_sAdditionalConfigData.forceOpaqueOverridden)
             m_sAdditionalConfigData.forceOpaque = true;
+    } else if (r.szRule == "immediate") {
+        m_sAdditionalConfigData.forceTearing = true;
     } else if (r.szRule.find("rounding") == 0) {
         try {
             m_sAdditionalConfigData.rounding = std::stoi(r.szRule.substr(r.szRule.find_first_of(' ') + 1));
@@ -492,6 +499,7 @@ void CWindow::updateDynamicRules() {
     m_sAdditionalConfigData.animationStyle = std::string("");
     m_sAdditionalConfigData.rounding       = -1;
     m_sAdditionalConfigData.dimAround      = false;
+    m_sAdditionalConfigData.forceTearing   = false;
     m_sAdditionalConfigData.forceRGBX      = false;
 
     const auto WINDOWRULES = g_pConfigManager->getMatchingRules(this);
@@ -682,4 +690,9 @@ bool CWindow::opaque() {
         return true;
 
     return false;
+}
+
+
+bool CWindow::canBeTorn() {
+    return (m_sAdditionalConfigData.forceTearing.toUnderlying() || m_bTearingHint) && g_pHyprRenderer->m_bTearingSupported;
 }

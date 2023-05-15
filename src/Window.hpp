@@ -120,6 +120,7 @@ struct SWindowAdditionalConfigData {
     CWindowOverridableVar<bool> noMaxSize             = false;
     CWindowOverridableVar<bool> dimAround             = false;
     CWindowOverridableVar<bool> forceRGBX             = false;
+    CWindowOverridableVar<bool> forceTearing         = false;
 };
 
 struct SWindowRule {
@@ -287,6 +288,10 @@ class CWindow {
         bool     head        = false;
     } m_sGroupData;
 
+    // for tearing
+    bool m_bTearingHint = false;
+    uint32_t m_iLastTearingSeq = 0;
+
     // For the list lookup
     bool operator==(const CWindow& rhs) {
         return m_uSurface.xdg == rhs.m_uSurface.xdg && m_uSurface.xwayland == rhs.m_uSurface.xwayland && m_vPosition == rhs.m_vPosition && m_vSize == rhs.m_vSize &&
@@ -327,6 +332,8 @@ class CWindow {
     void                     setGroupCurrent(CWindow* pWindow);
     void                     insertWindowToGroup(CWindow* pWindow);
     void                     updateGroupOutputs();
+
+    bool                     canBeTorn();
 
   private:
     // For hidden windows and stuff
